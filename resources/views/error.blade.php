@@ -1,0 +1,1 @@
+<!doctype html><html lang="es"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Portal institucional</title><main style="font:18px/1.6 system-ui;max-width:700px;margin:60px auto;padding:24px"><h1>Portal institucional</h1><p>{{ $message }}</p></main></html>

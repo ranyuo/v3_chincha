@@ -1,0 +1,11 @@
+# Alternativa para hostings donde la raíz del dominio no puede apuntar a public/:
+# si el proyecto completo queda dentro de public_html, todo se atiende desde public/
+# y el resto de carpetas (.env, vendor, storage, portal...) no es accesible.
+# Lo recomendado es que la raíz del dominio sea la carpeta public/ (ver README).
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteRule ^(.*)$ public/$1 [L]
+</IfModule>
+<IfModule !mod_rewrite.c>
+    Require all denied
+</IfModule>

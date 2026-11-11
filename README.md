@@ -1,64 +1,132 @@
-# Portal IESTP Chincha
+# Portal IESTP Chincha (Laravel)
 
-Archivos para publicar en Hostinger:
+Portal institucional e intranet del IESTP «Chincha» sobre **Laravel 13**.
 
-- `portal-private/`: código PHP, vistas y datos. Va **fuera** de `public_html`, al mismo nivel.
-- `public_html/`: raíz pública del dominio, con la página, la intranet, el CSS, el JavaScript y las imágenes.
+Esta versión conserva todo lo que hacía la versión anterior en PHP sin framework (v2_chincha): el mismo contenido, las mismas tablas `pisco_*` de MySQL, la misma aplicación del navegador y las mismas reglas de permisos, numeración y validación. Lo que cambió es la base técnica: rutas, sesiones, protección CSRF, vistas, configuración y tareas programadas ahora son de Laravel.
 
-El archivo `portal-private/config.php` (datos de la base de datos y clave de instalación) **no se guarda en GitHub**. Se crea a partir de `portal-private/config.example.php`.
+## Estructura
 
-No necesita Composer ni Node: las dependencias PHP y JavaScript van incluidas en el repositorio. Los requisitos del hosting están en la sección siguiente.
+| Carpeta | Contenido |
+|---|---|
+| `public/` | Única carpeta pública: `index.php` de Laravel, CSS, JavaScript, imágenes y bibliotecas del navegador. |
+| `app/Http/Controllers/` | Página del portal, API JSON (`/api/...`), instalación, cuentas, roles, auditoría y respaldos. |
+| `app/Http/Middleware/` | Sesión del portal, cabeceras de seguridad y bloqueo con contraseña temporal. |
+| `app/Exceptions/PortalErrors.php` | Mensajes de error del portal (JSON para la API, página sencilla para el resto). |
+| `portal/` | Núcleo del portal: reglas de negocio, permisos, mesa de partes, académico, correo, auditoría y respaldos. Composer lo carga solo (`classmap`). |
+| `portal/resources/` | `schema.sql`, contenido inicial (`data/portal.json`) y contratos de datos. |
+| `resources/views/` | Plantillas Blade. |
+| `routes/web.php` | Todas las direcciones del sitio y de la API. |
+| `routes/console.php` | Comandos `portal:correo` y `portal:respaldos` y su programación. |
+| `config/portal.php` | Ajustes del portal, leídos del `.env`. |
+| `storage/app/portal/` | Datos privados que escribe el portal: respaldos, ajustes SMTP cifrados y bloqueo de instalación. No se guarda en Git. |
+
+### Direcciones
+
+| Antes | Ahora |
+|---|---|
+| `/index.php?route=api/...` | `/api/...` |
+| `/install.php` | `/instalar` |
+| `/accounts.php` | `/cuentas` |
+| `/roles.php` | `/roles` |
+| `/auditoria.php` | `/auditoria` |
+| `/respaldos.php`, `/backup.php` | `/respaldos`, `/respaldos/sql` |
+| `/mesa-de-partes.php`, `/libro-de-reclamaciones.php`, `/bolsa-laboral.php`, `/certificados.php` | `/mesa-de-partes`, `/libro-de-reclamaciones`, `/bolsa-laboral`, `/certificados` |
+| `portal-private/mail-worker.php`, `portal-private/cron.php` | `php artisan portal:correo`, `php artisan portal:respaldos` (los ejecuta `php artisan schedule:run`) |
+
+Las direcciones antiguas con `.php` redirigen (301) a las nuevas, así que los enlaces ya publicados siguen funcionando.
 
 ## Requisitos del hosting
 
-- **PHP 8.1 o superior** con las extensiones `pdo_mysql`, `fileinfo`, `openssl`, `zlib`, `json` y `session` (Hostinger las trae activas). `mbstring` es recomendable.
-- **MariaDB 10.4+ o MySQL 8** (en hPanel, «MySQL» es MariaDB). **Una base de datos por sitio:** las tablas usan el prefijo fijo `pisco_`.
-- El sitio debe estar en la **raíz de un dominio o subdominio** (no en una subcarpeta).
-- Carpetas con permiso de escritura: `portal-private/` (bloqueo de instalación, `backups/` y la configuración SMTP guardada desde la intranet) y `public_html/assets/cache/`.
+- **PHP 8.3 o superior** (Laravel 13 lo exige; en hPanel › *Avanzado › Configuración de PHP*) con `pdo_mysql`, `mbstring`, `fileinfo`, `openssl`, `zlib`, `ctype`, `tokenizer`, `xml` y `session`.
+- **Composer** para instalar las dependencias. Hostinger lo trae disponible por SSH en los planes Premium y Business.
+- **MariaDB 10.4+ o MySQL 8.** Una base de datos por sitio: las tablas usan el prefijo fijo `pisco_`.
+- El sitio debe estar en la **raíz de un dominio o subdominio**, y esa raíz debe ser la carpeta `public/`.
+- Permiso de escritura en `storage/` y `bootstrap/cache/`, y en `public/assets/cache/` (755).
 
-## Instalación nueva
+## Instalación nueva en Hostinger
 
 1. **Base de datos:** en hPanel › *Bases de datos › Bases de datos MySQL*, crea una base y un usuario con su contraseña. Anota los tres datos.
-2. **Descarga el código:** en GitHub, *Code › Download ZIP*.
-3. **Sube y extrae:** con el *Administrador de archivos*, sube el ZIP a la carpeta del dominio (la que contiene `public_html`) y extráelo. GitHub mete todo en una carpeta `chincha-main/`; mueve `portal-private/` y `public_html/` desde ahí a la carpeta del dominio y reemplaza el `public_html` vacío.
-4. **Configura:** copia `portal-private/config.example.php` como `portal-private/config.php` y completa:
-   - `db_name`, `db_user` y `db_password`;
-   - `install_key`: una clave privada aleatoria de 32 caracteres o más. Guárdala.
-5. **Instala:** abre `https://tu-dominio/install.php`, escribe la `install_key` y crea la cuenta del administrador principal.
-6. **Borra** `public_html/install.php`. Después de instalar ya no sirve: si lo vuelves a abrir responde «El portal ya está instalado» (código 410). Mientras el portal no esté instalado, la portada muestra un aviso que indica abrir `/install.php`.
-7. **Permisos:** `public_html/assets/cache/` debe tener permisos **755**.
-8. **Comprueba:**
+2. **Código:** entra por SSH (hPanel › *Avanzado › Acceso SSH*) y clona el repositorio **junto a** `public_html`, no dentro:
+
+   ```bash
+   cd ~/domains/tu-dominio.edu.pe
+   git clone https://github.com/ranyuo/v3_chincha.git portal
+   cd portal
+   composer install --no-dev --optimize-autoloader
+   ```
+
+3. **Raíz pública:** haz que el dominio sirva la carpeta `public/` del proyecto. Lo más simple es reemplazar `public_html` por un enlace:
+
+   ```bash
+   cd ~/domains/tu-dominio.edu.pe
+   mv public_html public_html.anterior
+   ln -s portal/public public_html
+   ```
+
+   Si tu plan no permite enlaces, sube el proyecto completo dentro de `public_html`: el `.htaccess` de la raíz envía todas las peticiones a `public/` y deja inaccesibles `.env`, `vendor/`, `storage/` y el resto de carpetas.
+
+4. **Configura:** copia `.env.example` como `.env` y completa:
+   - `APP_URL` con la dirección del sitio;
+   - `DB_DATABASE`, `DB_USERNAME` y `DB_PASSWORD`;
+   - `PORTAL_INSTALL_KEY`: una clave privada aleatoria de 32 caracteres o más. Guárdala.
+
+   Luego genera la clave de la aplicación y optimiza:
+
+   ```bash
+   php artisan key:generate
+   php artisan optimize
+   ```
+
+5. **Instala:** abre `https://tu-dominio/instalar`, escribe la `PORTAL_INSTALL_KEY` y crea la cuenta del administrador principal. Después de instalar, `/instalar` responde «El portal ya está instalado» (código 410). Mientras el portal no esté instalado, la portada muestra un aviso que indica abrir `/instalar`.
+6. **Tarea programada (una sola):** en hPanel › *Avanzado › Trabajos cron*, crea una tarea **cada minuto** con:
+
+   ```bash
+   php /home/<usuario>/domains/<dominio>/portal/artisan schedule:run
+   ```
+
+   Laravel ejecuta desde ahí el envío de correo (`portal:correo`, cada minuto) y los respaldos programados (`portal:respaldos`, cada hora según el horario de la intranet). Ambas tareas depuran la auditoría una vez al día.
+7. **Comprueba:**
    - Abre el sitio y entra a la intranet con la cuenta creada.
    - Revisa *Configuración*: datos institucionales y logo.
    - En *Mesa de partes › Áreas receptoras › Editar áreas*, carga las áreas reales con sus correos.
    - En *Usuarios y roles*, crea las cuentas del personal.
 
-**Correo de notificaciones (recomendado):** en la intranet, *Configuración › Configurar correo notificador (SMTP)*, indica el servidor, la cuenta y su contraseña de aplicación y activa el envío. Después, en hPanel › *Avanzado › Trabajos cron*, crea una tarea **cada minuto** con `php /home/<usuario>/domains/<dominio>/portal-private/mail-worker.php` para los reintentos. Detalles en [MEJORAS-MODULOS.md](MEJORAS-MODULOS.md).
+**Correo de notificaciones (recomendado):** en la intranet, *Configuración › Configurar correo notificador (SMTP)*, indica el servidor, la cuenta y su contraseña de aplicación y activa el envío. Las credenciales se guardan cifradas con la `PORTAL_INSTALL_KEY` en `storage/app/portal/.smtp-settings.json`. Como alternativa, se pueden definir con las variables `PORTAL_SMTP_*` del `.env`.
 
-**Opcional, respaldos automáticos:** en hPanel › *Avanzado › Trabajos cron*, crea una tarea diaria con `php /home/<usuario>/domains/<dominio>/portal-private/cron.php`. Luego actívala en la intranet, en *Copias de seguridad*.
+**Retención de la auditoría:** se conserva 24 meses por omisión. Para cambiarlo, define `PORTAL_AUDIT_RETENTION_MONTHS` en el `.env` (mínimo 6; `0` la conserva sin límite).
 
-**Retención de la auditoría:** el historial de auditoría se conserva 24 meses y lo más antiguo se elimina una vez al día, desde `mail-worker.php` o `cron.php` (basta con que una de las dos tareas esté programada). Para cambiar el plazo, define `'audit_retention_months'` en `config.php` (mínimo 6; `0` lo conserva sin límite). Cada depuración queda registrada en la propia auditoría como «Depurar auditoría».
+**Sesiones:** duran 30 minutos de inactividad (`SESSION_LIFETIME`) y la cookie `PISCOSESSID` solo viaja por HTTPS (`SESSION_SECURE_COOKIE=true`). Para pruebas locales por HTTP usa `SESSION_SECURE_COOKIE=false`.
 
-## Actualizar una instalación existente
+## Pasar desde la versión anterior (sin Laravel)
 
-Respalda antes los archivos y la base en hPanel.
+La base de datos **no cambia**: Laravel usa las mismas tablas `pisco_*`, así que el contenido, las cuentas y los archivos se conservan.
 
-Sube `portal-private/` y `public_html/` encima de las carpetas actuales y acepta **sobrescribir**. **No borres las carpetas antes:** así se conservan `config.php`, `backups/`, `install.lock` y la configuración SMTP guardada (`.smtp-settings.json`). Después, borra `public_html/install.php`.
+1. Respalda los archivos y la base en hPanel.
+2. Instala esta versión como en los pasos 2 a 4 de la instalación nueva, con los datos de la **misma base** en el `.env` y la **misma clave** `install_key` del `config.php` anterior como `PORTAL_INSTALL_KEY` (sin ella no se pueden leer los ajustes SMTP guardados).
+3. Copia los datos privados de `portal-private/` a `storage/app/portal/`:
+   - la carpeta `backups/`;
+   - el archivo `.smtp-settings.json`, si existe.
+4. Reemplaza los dos cron anteriores (`mail-worker.php` y `cron.php`) por la única tarea `php artisan schedule:run` del paso 6.
+5. No abras `/instalar`: el portal ya está instalado y lo indica.
 
-La base de datos se actualiza sola la primera vez que se abre el sitio con la versión nueva (por ejemplo, crea la cola de correo `pisco_mail`); no se pierden datos ni cuentas.
+## Actualizar esta versión
 
-Subir archivos no reemplaza el contenido ya guardado en MySQL: lo publicado se sigue editando desde la intranet.
+```bash
+cd ~/domains/tu-dominio.edu.pe/portal
+git pull
+composer install --no-dev --optimize-autoloader
+php artisan optimize
+```
 
-Borra también del servidor `public_html/actualizar.php` y `public_html/recuperar.php` si siguen allí: ya no forman parte del sistema.
+La base de datos se actualiza sola la primera vez que se abre el sitio con la versión nueva; no se pierden datos ni cuentas. Lo publicado se sigue editando desde la intranet.
 
 ## Dónde se edita
 
-- **CSS y JavaScript del portal:** `public_html/assets/app/` (`portal.css` y `portal-1.js` a `portal-4.js`).
-- **Armazón de la página:** `portal-private/views/portal.php`.
-- **Contenido inicial** que carga la instalación: `portal-private/data/portal.json`.
-- **Imágenes:** `public_html/assets/chincha/`. Las imágenes JPG o PNG grandes tienen una copia `.webp` que el servidor entrega automáticamente a los navegadores compatibles.
-
-El historial de pruebas, informes y herramientas de desarrollo sigue disponible en el historial de Git (commit `af1e06f`).
+- **CSS y JavaScript del portal:** `public/assets/app/` (`portal.css` y `portal-1.js` a `portal-4.js`) y `public/*.js`.
+- **Armazón de la página:** `resources/views/portal.blade.php`.
+- **Contenido inicial** que carga la instalación: `portal/resources/data/portal.json`.
+- **Imágenes:** `public/assets/chincha/`. Las imágenes JPG o PNG grandes tienen una copia `.webp` que el servidor entrega automáticamente a los navegadores compatibles.
+- **Reglas del portal** (validación, permisos, numeración, correo, respaldos): `portal/`.
 
 ## Cambios de presentación y contenido institucional
 
@@ -83,27 +151,28 @@ Incorporados desde `ranyuo/v2_flv`.
 
 ### Módulos y correo
 
-- **Servicios con enlace propio:** `mesa-de-partes.php`, `libro-de-reclamaciones.php`, `bolsa-laboral.php` y `certificados.php` abren cada servicio sin la navegación del portal. Siguen sujetos a la confirmación de servicios de *Configuración*.
-- **Notificaciones por correo (SMTP):** se configuran en *Configuración*, sección *Configurar correo notificador (SMTP)*. Las credenciales se guardan cifradas con la `install_key` en `portal-private/.smtp-settings.json`. Los mensajes se encolan y los envía `mail-worker.php`.
+- **Servicios con enlace propio:** `/mesa-de-partes`, `/libro-de-reclamaciones`, `/bolsa-laboral` y `/certificados` abren cada servicio sin la navegación del portal. Siguen sujetos a la confirmación de servicios de *Configuración*.
+- **Notificaciones por correo (SMTP):** se configuran en *Configuración*, sección *Configurar correo notificador (SMTP)*. Los mensajes se encolan en `pisco_mail`; el primer intento se hace al terminar la respuesta y los reintentos los hace `php artisan portal:correo`.
 - **Mesa de partes:** correlativo anual de expedientes y notificación a la mesa de partes y al solicitante. El correo receptor de *Mesa de partes* debe ser válido. La instalación nueva usa `direcciongeneral@iestpchincha.edu.pe`; en una instalación existente, revísalo en la configuración de *Mesa de partes* antes de habilitar el servicio.
-- **Trabajos cron:** `mail-worker.php` cada minuto y `cron.php` una vez al día (respaldos y depuración de la auditoría según la retención configurada).
 
 ## Pruebas
 
-Desde la raíz del repositorio, con PHP 8.2 o posterior:
+Pruebas de Laravel (rutas, redirecciones, errores y cabeceras; no necesitan MySQL):
 
-```sh
-php tests/observaciones.php
+```bash
+php artisan test
 ```
 
-Las suites de instalación, integridad, permisos, respaldos, correo y volumen se describen en `tests/README.md`. `bash tests/run.sh` las ejecuta con Docker y el flujo `.github/workflows/qa.yml` las corre en cada push.
+Reglas del contenido (sin base de datos):
 
-Las comprobaciones de navegador requieren Node, Playwright y Chromium. Ejecútalas únicamente contra una **instalación local de pruebas**, con la base inicial del repositorio y los servicios aún deshabilitados. Los casos de persistencia modifican temporalmente una galería y la activación de un servicio, y después los restauran. No deben ejecutarse contra producción.
-
-```sh
-PORTAL_TEST_URL=http://127.0.0.1:8081 \
-CHROMIUM_PATH=/usr/bin/chromium \
-node tests/observaciones-browser.cjs
+```bash
+php tests/Integration/observaciones.php
 ```
 
-Opcionalmente, `PORTAL_TEST_PASSWORD_FILE` apunta a un archivo local con la contraseña de la cuenta de pruebas `devadmin` (otro usuario puede indicarse mediante `PORTAL_TEST_USER`) para validar carga y persistencia tras recargar. No guardes ese archivo en Git. `PORTAL_TEST_SCREENSHOTS` permite indicar una carpeta externa para las capturas.
+Las suites de instalación, integridad, permisos, respaldos, correo y volumen necesitan MariaDB y se describen en `tests/Integration/README.md`. `bash tests/Integration/run.sh` las ejecuta con Docker (después de `composer install`) y el flujo `.github/workflows/qa.yml` las corre en cada push con PHP 8.3 y 8.4.
+
+Las comprobaciones de navegador (`tests/Integration/*.cjs`) requieren Node, Playwright y Chromium. Ejecútalas únicamente contra una **instalación local de pruebas**, nunca contra producción. Los detalles están en `tests/Integration/README.md`.
+
+## Documentación
+
+Los manuales de `docs/manuales/2026-11-10/` y `documentacion/Chincha/` describen el uso del portal, que no cambia. Sus pasos de instalación corresponden a la versión anterior sin Laravel; para instalar esta versión sigue este README.
